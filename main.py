@@ -9,7 +9,7 @@ import aiohttp
 # تفاصيل API الخاصة بك
 API_ID = '16748685'
 API_HASH = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
-BOT_TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
+BOT_TOKEN = '7492900908:AAGiiLlsafD-O4Fam6r5vP07vo2I8IeXVCc'
 
 # إعداد الـ Headers لمحاكاة جهاز حقيقي
 headers = {
