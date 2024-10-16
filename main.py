@@ -1,4 +1,3 @@
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telethon import TelegramClient
@@ -145,8 +144,8 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, phone_number, pattern=r'^\+\d+$'))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, verification_code, pattern=r'^\d+$'))
+    application.add_handler(MessageHandler(filters.Regex(r'^\+\d+$') & ~filters.COMMAND, phone_number))
+    application.add_handler(MessageHandler(filters.Regex(r'^\d+$') & ~filters.COMMAND, verification_code))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, two_step_verification))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, channel_info))
     application.add_handler(CallbackQueryHandler(report_channel, pattern='^report_'))
