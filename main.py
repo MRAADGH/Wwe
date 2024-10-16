@@ -4,6 +4,7 @@ from telethon import TelegramClient
 from telethon.tl.functions.account import ReportPeerRequest
 from telethon.tl.types import InputReportReasonPornography, InputReportReasonViolence, InputReportReasonSpam, InputPeerChannel
 from faker import Faker
+import random
 import os
 
 # تفاصيل API الخاصة بك
@@ -16,6 +17,9 @@ fake = Faker()
 
 # قاموس لتخزين معلومات المستخدم
 user_data = {}
+
+# قائمة بمعماريات مختلفة لجعل المحاولات أكثر تنوعًا
+arch_list = ['armv7', 'arm64-v8a', 'x86', 'x86_64']
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
@@ -47,9 +51,12 @@ async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     user_data[user_id] = {'phone': phone}
     
-    # معلومات الجهاز الوهمية
-    device = fake.word() + " " + fake.word()  # مثال: "Samsung Galaxy"
-    system = fake.word() + " " + fake.random_int(min=5, max=12)  # مثال: "Android 10"
+    # معلومات الجهاز الوهمية المتنوعة
+    device = fake.company() + " " + fake.random_element(['Galaxy', 'Pixel', 'Mi', 'iPhone', 'Nexus', 'OnePlus']) + " " + str(fake.random_int(min=5, max=10))
+    system = "Android " + str(fake.random_int(min=7, max=13))  # تغيير إصدارات النظام
+    app_version = str(fake.random_int(min=7, max=10)) + "." + str(fake.random_int(min=0, max=9)) + "." + str(fake.random_int(min=0, max=9))  # إصدار عشوائي للتطبيق
+    lang_code = random.choice(['en', 'ar', 'es', 'fr', 'ru'])  # إضافة لغة عشوائية
+    arch = random.choice(arch_list)  # معمارية عشوائية
     
     client = TelegramClient(
         f'session_{user_id}', 
@@ -57,8 +64,8 @@ async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         API_HASH,
         device_model=device, 
         system_version=system,
-        app_version="9.0",
-        lang_code="en"
+        app_version=app_version,
+        lang_code=lang_code
     )
     await client.connect()
     
@@ -66,7 +73,7 @@ async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         try:
             sent_code = await client.send_code_request(phone)
             user_data[user_id]['phone_code_hash'] = sent_code.phone_code_hash
-            await update.message.reply_text("تم إرسال رمز التحقق. الرجاء إدخاله:")
+            await update.message.reply_text(f"تم إرسال رمز التحقق. الرجاء إدخاله:\n\nالجهاز: {device}\nالنظام: {system}\nمعمارية: {arch}")
         except Exception as e:
             await update.message.reply_text(f"حدث خطأ: {str(e)}")
             return
@@ -183,13 +190,16 @@ async def report_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # إضافة المعالجات (Handlers) المختلفة
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.Regex(r'^\+\d+$') & ~filters.COMMAND, phone_number))
-    application.add_handler(MessageHandler(filters.Regex(r'^\d+$') & ~filters.COMMAND, verification_code))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, phone_number, pattern=r'^\+\d+$'))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, verification_code, pattern=r'^\d+$'))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, two_step_verification))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, channel_info))
     application.add_handler(CallbackQueryHandler(report_channel, pattern='^report_'))
 
+    # تشغيل البوت
     application.run_polling()
 
 if __name__ == '__main__':
