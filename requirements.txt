@@ -1,2 +1,2 @@
-aiogram==2.19.1
+aiogram==2.25.2
 telethon==1.24.0
