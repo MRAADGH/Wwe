@@ -22,7 +22,7 @@ TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 USERNAME, PASSWORD, CALLER_ID = range(3)
 
 # استبدلها برابط الموقع الخاص بك
-WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
+WEBSITE_URL = "http://sip.vipcaller.net/"
 
 # إعداد خيارات Chrome
 chrome_options = Options()
