@@ -1,176 +1,166 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
-from telethon.network.connection.tcpabridged import ConnectionTcpAbridged
-import os
 
-# تفاصيل API الخاصة بك
-API_ID = '16748685'
-API_HASH = 'f0c8f7e4a7a50b5c64fd5243a256fd2f'
-BOT_TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
+import telebot
+import socket
+import concurrent.futures
+from ping3 import ping
+import time
+import io
 
-# قاموس لتخزين معلومات المستخدم
-user_data = {}
+# تعريف التوكن الخاص ببوت التليجرام
+TOKEN = '7301883949:AAGI-cJKosJ1vavbPlYLEW137j5qT7tjry0'
+bot = telebot.TeleBot(TOKEN)
 
-# تفاصيل جهاز وهمي لمحاكاة جهاز حقيقي وتجنب الحظر
-DEVICE_SETTINGS = {
-    'device_model': 'Samsung Galaxy S21',
-    'system_version': 'Android 12',
-    'app_version': '8.4',
-    'lang_code': 'en',
-    'system_lang_code': 'en'
-}
+class IPScanner:
+    def __init__(self, ip_list, threads=50):
+        self.ip_list = ip_list
+        self.threads = threads
+        self.working_hosts = []
 
-# إعداد العميل مع محاكاة جهاز حقيقي
-def create_client(user_id):
-    return TelegramClient(
-        f'session_{user_id}',
-        API_ID,
-        API_HASH,
-        device_model=DEVICE_SETTINGS['device_model'],
-        system_version=DEVICE_SETTINGS['system_version'],
-        app_version=DEVICE_SETTINGS['app_version'],
-        lang_code=DEVICE_SETTINGS['lang_code'],
-        system_lang_code=DEVICE_SETTINGS['system_lang_code'],
-        connection=ConnectionTcpAbridged
-    )
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [
-        [InlineKeyboardButton("تسجيل حساب", callback_data='register')],
-        [InlineKeyboardButton("إبلاغ", callback_data='report')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('مرحبًا! اختر ما تريد القيام به:', reply_markup=reply_markup)
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == 'register':
-        await query.edit_message_text(text="الرجاء إدخال رقم هاتفك مع رمز الدولة (مثال: +1234567890):")
-        return 'PHONE'
-    elif query.data == 'report':
-        await query.edit_message_text(text="الرجاء إدخال اسم المستخدم أو رابط القناة/المجموعة التي تريد الإبلاغ عنها:")
-        return 'CHANNEL'
-
-async def phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    phone = update.message.text
-    user_data[user_id] = {'phone': phone}
-
-    client = create_client(user_id)
-    await client.connect()
-
-    if not await client.is_user_authorized():
+    def check_host(self, ip):
         try:
-            sent_code = await client.send_code_request(phone)
-            user_data[user_id]['phone_code_hash'] = sent_code.phone_code_hash
-            await update.message.reply_text("تم إرسال رمز التحقق. الرجاء إدخاله:")
-            return 'CODE'
-        except Exception as e:
-            await update.message.reply_text(f"حدث خطأ: {str(e)}")
-            return
+            response_time = ping(ip, timeout=2)
+            if response_time is not None:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                result = sock.connect_ex((ip, 80))
+                sock.close()
+                
+                if result == 0:
+                    self.working_hosts.append(ip)
+                    return True, ip, response_time
+            return False, ip, None
+        except Exception:
+            return False, ip, None
 
-async def verification_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    code = update.message.text
+    def scan(self):
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+            future_to_ip = {executor.submit(self.check_host, ip): ip for ip in self.ip_list}
+            for future in concurrent.futures.as_completed(future_to_ip):
+                try:
+                    success, ip, response_time = future.result()
+                    if success:
+                        results.append(f"✅ {ip} - شغال - {response_time:.2f}ms")
+                except Exception:
+                    continue
+        return results
 
-    client = create_client(user_id)
-    await client.connect()
+def send_long_message(chat_id, text, reply_to_message_id=None):
+    """تقسيم الرسائل الطويلة إلى أجزاء"""
+    max_length = 4000  # أقل من الحد الأقصى للتليجرام للأمان
+    parts = []
+    
+    while text:
+        if len(text) <= max_length:
+            parts.append(text)
+            break
+        part = text[:max_length]
+        last_newline = part.rfind('\n')
+        if last_newline != -1:
+            parts.append(text[:last_newline])
+            text = text[last_newline + 1:]
+        else:
+            parts.append(text[:max_length])
+            text = text[max_length:]
 
-    try:
-        await client.sign_in(user_data[user_id]['phone'], code, phone_code_hash=user_data[user_id]['phone_code_hash'])
-        await update.message.reply_text("تم تسجيل الدخول بنجاح!")
-    except SessionPasswordNeededError:
-        await update.message.reply_text("مطلوب التحقق بخطوتين. الرجاء إدخال كلمة المرور:")
-        return 'PASSWORD'
-    except Exception as e:
-        await update.message.reply_text(f"حدث خطأ: {str(e)}")
+    # إرسال كل جزء
+    first_message_id = None
+    for i, part in enumerate(parts):
+        if i == 0 and reply_to_message_id:
+            message = bot.reply_to(reply_to_message_id, part)
+            first_message_id = message.message_id
+        else:
+            message = bot.send_message(chat_id, part)
+    
+    return first_message_id
 
-async def two_step_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    password = update.message.text
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    welcome_text = """
+مرحباً بك في بوت فحص الهوستات! 🌐
 
-    client = create_client(user_id)
-    await client.connect()
+الأوامر المتاحة:
+- أرسل قائمة من عناوين IP للفحص
+- /help للمساعدة
 
-    try:
-        await client.sign_in(password=password)
-        await update.message.reply_text("تم تسجيل الدخول بنجاح!")
-    except Exception as e:
-        await update.message.reply_text(f"حدث خطأ: {str(e)}")
+المطور: @SAGD112
+    """
+    bot.reply_to(message, welcome_text)
 
-async def channel_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    channel_username = update.message.text
-    user_id = update.effective_user.id
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    help_text = """
+كيفية استخدام البوت:
+1. قم بنسخ قائمة الهوستات (IP)
+2. أرسلها مباشرة إلى البوت
+3. انتظر النتائج - سيظهر لك الهوستات الشغالة فقط
 
-    client = create_client(user_id)
-    await client.connect()
+مثال:
+185.60.219.14
+185.60.219.15
+185.60.219.16
+    """
+    bot.reply_to(message, help_text)
 
-    try:
-        channel = await client.get_entity(channel_username)
-        info = (
-            f"معلومات القناة/المجموعة:\n"
-            f"الاسم: {channel.title}\n"
-            f"المعرف: {channel.username if hasattr(channel, 'username') else 'غير متاح'}\n"
-            f"الوصف: {channel.about if hasattr(channel, 'about') else 'غير متاح'}\n"
-            f"عدد المشتركين: {channel.participants_count if hasattr(channel, 'participants_count') else 'غير متاح'}"
+@bot.message_handler(func=lambda message: True)
+def scan_ips(message):
+    ip_list = [ip.strip() for ip in message.text.split('\n') if ip.strip()]
+    
+    if not ip_list:
+        bot.reply_to(message, "❌ الرجاء إرسال قائمة صحيحة من عناوين IP!")
+        return
+
+    valid_ips = []
+    for ip in ip_list:
+        try:
+            socket.inet_aton(ip)
+            valid_ips.append(ip)
+        except socket.error:
+            continue
+
+    if not valid_ips:
+        bot.reply_to(message, "❌ لم يتم العثور على عناوين IP صحيحة!")
+        return
+
+    status_message = bot.reply_to(message, f"⏳ جاري فحص {len(valid_ips)} هوست...")
+
+    scanner = IPScanner(valid_ips)
+    start_time = time.time()
+    working_hosts = scanner.scan()
+    scan_time = time.time() - start_time
+
+    if working_hosts:
+        results_text = "🟢 الهوستات الشغالة:\n\n"
+        results_text += "\n".join(working_hosts)
+        results_text += f"\n\n⏱ زمن الفحص: {scan_time:.2f} ثانية"
+        results_text += "\n\nBY: @SAGD112"
+
+        # حذف رسالة "جاري الفحص"
+        bot.delete_message(message.chat.id, status_message.message_id)
+        
+        # إرسال النتائج كرسائل منفصلة
+        send_long_message(message.chat.id, results_text, message)
+
+        # إنشاء وإرسال ملف النتائج
+        results_file = io.StringIO()
+        results_file.write("\n".join([host.split(" ")[1] for host in working_hosts]))
+        results_file.seek(0)
+        
+        bot.send_document(
+            message.chat.id,
+            ('working_hosts.txt', results_file.getvalue().encode()),
+            caption=f"📄 تم العثور على {len(working_hosts)} هوست شغال"
+        )
+    else:
+        bot.edit_message_text(
+            f"❌ لم يتم العثور على هوستات شغالة\n⏱ زمن الفحص: {scan_time:.2f} ثانية",
+            message.chat.id,
+            status_message.message_id
         )
 
-        keyboard = [
-            [InlineKeyboardButton("محتوى إباحي", callback_data='report_porn')],
-            [InlineKeyboardButton("عنف", callback_data='report_violence')],
-            [InlineKeyboardButton("سبام", callback_data='report_spam')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await update.message.reply_text(info, reply_markup=reply_markup)
-        user_data[user_id]['channel'] = channel
-    except Exception as e:
-        await update.message.reply_text(f"حدث خطأ: {str(e)}")
-
-async def report_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    user_id = update.effective_user.id
-    channel = user_data[user_id]['channel']
-
-    client = create_client(user_id)
-    await client.connect()
-
-    reason = InputReportReasonPornography()
-    if query.data == 'report_violence':
-        reason = InputReportReasonViolence()
-    elif query.data == 'report_spam':
-        reason = InputReportReasonSpam()
-
+if __name__ == "__main__":
+    print("Bot started...")
     try:
-        result = await client(ReportPeerRequest(
-            peer=InputPeerChannel(channel.id, channel.access_hash),
-            reason=reason,
-            message="تقرير تلقائي"
-        ))
-        if result:
-            await query.edit_message_text("تم الإبلاغ بنجاح!")
-        else:
-            await query.edit_message_text("فشل الإبلاغ. حاول مرة أخرى لاحقًا.")
+        bot.infinity_polling()
     except Exception as e:
-        await query.edit_message_text(f"حدث خطأ أثناء الإبلاغ: {str(e)}")
-
-def main() -> None:
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.Regex(r'^\+\d+$') & ~filters.COMMAND, phone_number))
-    application.add_handler(MessageHandler(filters.Regex(r'^\d+$') & ~filters.COMMAND, verification_code))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, channel_info))
-    application.add_handler(CallbackQueryHandler(report_channel, pattern='^report_'))
-
-    application.run_polling()
-
-if __name__ == '__main__':
-    main()
+        print(f"Error: {e}")
