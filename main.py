@@ -70,10 +70,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         keyboard = [[InlineKeyboardButton("تسجيل الدخول", callback_data='login')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            'مرحباً بك في بوت تغيير معرف المتصل\nاضغط على زر تسجيل الدخول للبدء',
-            reply_markup=reply_markup
-        )
+        
+        if update.message:
+            await update.message.reply_text(
+                'مرحباً بك في بوت تغيير معرف المتصل\nاضغط على زر تسجيل الدخول للبدء',
+                reply_markup=reply_markup
+            )
         return ConversationHandler.END
     except Exception as e:
         logger.error(f"Error in start handler: {e}")
@@ -92,7 +94,26 @@ async def handle_login_button(update: Update, context: ContextTypes.DEFAULT_TYPE
         await error_handler(update, context)
         return ConversationHandler.END
 
-# ... (باقي الدوال تبقى كما هي مع إضافة معالجة الأخطاء المناسبة)
+# دوال ناقصة يجب إضافتها
+async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة اسم المستخدم"""
+    # معالجة اسم المستخدم هنا
+    return PASSWORD
+
+async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة كلمة المرور"""
+    # معالجة كلمة المرور هنا
+    return CALLER_ID
+
+async def handle_caller_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة معرف المتصل"""
+    # معالجة معرف المتصل هنا
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """إلغاء المحادثة"""
+    await update.message.reply_text("تم إلغاء المحادثة.")
+    return ConversationHandler.END
 
 def main() -> None:
     """الدالة الرئيسية المحسنة"""
@@ -119,9 +140,8 @@ def main() -> None:
         application.add_handler(conv_handler)
         application.add_error_handler(error_handler)
 
-        # تشغيل البوت مع إعدادات إضافية
+        # تشغيل البوت
         application.run_polling(
-            allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True,
             pool_timeout=30
         )
