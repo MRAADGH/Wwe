@@ -1,29 +1,34 @@
 import os
-import undetected_chromedriver as uc
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
 import asyncio
 
-# Replace with your actual bot token
-TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
+# استبدلها بالرمز الخاص بك
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
-# States
+# حالات المحادثة
 USERNAME, PASSWORD, CALLER_ID = range(3)
 
-# Replace with your actual website URL
+# استبدلها برابط الموقع الخاص بك
 WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
 
-# Configure Chrome options for headless mode
-chrome_options = uc.ChromeOptions()
-chrome_options.add_argument("--headless")  # Run in headless mode
+# إعداد خيارات Chrome
+chrome_options = Options()
+chrome_options.add_argument("--headless")  # للتشغيل بدون واجهة
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
+chrome_options.binary_location = "/usr/bin/google-chrome"  # مسار Chrome داخل الحاوية
 
-# Initialize the WebDriver
-driver = uc.Chrome(options=chrome_options)
+# تهيئة WebDriver
+driver = webdriver.Chrome(service=Service("/usr/local/bin/chromedriver"), options=chrome_options)
+
+# تعريف الوظائف الخاصة بالبوت
 
 async def start(update: Update, context):
     keyboard = [
@@ -47,24 +52,24 @@ async def get_password(update: Update, context):
     username = context.user_data['username']
     password = update.message.text
 
-    # Use Selenium to log in to the website
+    # الدخول إلى الموقع باستخدام Selenium
     driver.get(WEBSITE_URL)
 
-    # Wait for the username field to be visible and enter the username
+    # انتظار ظهور حقل اسم المستخدم وإدخال البيانات
     username_field = WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.ID, "username"))
     )
     username_field.send_keys(username)
 
-    # Enter the password
+    # إدخال كلمة المرور
     password_field = driver.find_element(By.ID, "password")
     password_field.send_keys(password)
 
-    # Click the login button
+    # الضغط على زر الدخول
     login_button = driver.find_element(By.ID, "login-button")
     login_button.click()
 
-    # Check if login was successful
+    # التحقق من نجاح تسجيل الدخول
     try:
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "dashboard"))
@@ -78,7 +83,7 @@ async def get_password(update: Update, context):
 async def change_caller_id(update: Update, context):
     new_caller_id = update.message.text
 
-    # Use Selenium to change the caller ID on the website
+    # تغيير معرف المتصل باستخدام Selenium
     try:
         caller_id_field = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "caller-id"))
@@ -89,7 +94,7 @@ async def change_caller_id(update: Update, context):
         save_button = driver.find_element(By.ID, "save-caller-id")
         save_button.click()
 
-        # Wait for confirmation message
+        # انتظار رسالة التأكيد
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "success-message"))
         )
