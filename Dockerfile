@@ -22,3 +22,5 @@ COPY . .
 
 # تشغيل البرنامج
 CMD ["python", "main.py"]
+# في نهاية الملف Dockerfile، قبل CMD
+RUN pip install --no-cache-dir --upgrade python-telegram-bot
