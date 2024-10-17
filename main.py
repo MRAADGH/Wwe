@@ -94,8 +94,8 @@ def login(username, password):
         driver.quit()
 
 if __name__ == "__main__":
-    username = "أدخل_اسم_المستخدم"  # استبدل هذا باسم المستخدم الفعلي
-    password = "أدخل_كلمة_المرور"  # استبدل هذا بكلمة المرور الفعلية
+    username = "VIP57658"  # استبدل هذا باسم المستخدم الفعلي
+    password = "UQnJ4q5D"  # استبدل هذا بكلمة المرور الفعلية
     if login(username, password):
         print("تم تسجيل الدخول بنجاح!")
     else:
