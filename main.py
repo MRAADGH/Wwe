@@ -1,6 +1,5 @@
 import os
 import logging
-import traceback
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler, ContextTypes
 from selenium import webdriver
@@ -10,146 +9,200 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+import traceback
 
-# إعداد التسجيل بشكل أكثر تفصيلاً
+# إعداد التسجيل
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
+    filename='bot.log'
 )
 logger = logging.getLogger(__name__)
 
 # التوكن
-TOKEN = "7492900908:AAGiiLlsafD-O4Fam6r5vP07vo2I8IeXVCc"  # استبدل بالتوكن الخاص بك
+TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 
 # حالات المحادثة
-USERNAME, PASSWORD, CALLER_ID = range(3)
+CHOOSING_ACTION, USERNAME, PASSWORD, CALLER_ID = range(4)
 
 # رابط الموقع
 WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
 
 def setup_driver():
-    """إعداد متصفح Chrome مع معالجة أفضل للأخطاء"""
-    try:
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-        
-        # استخدام webdriver_manager للحصول على ChromeDriver المناسب
-        service = Service(ChromeDriverManager().install())
-        
-        driver = webdriver.Chrome(service=service, options=options)
-        driver.set_page_load_timeout(30)
-        return driver
-    except Exception as e:
-        logger.error(f"خطأ في إعداد المتصفح: {str(e)}")
-        raise
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """معالج الأخطاء المحسن"""
-    logger.error(f"Exception while handling an update: {context.error}")
-    logger.error(traceback.format_exc())
+    """إعداد متصفح Chrome"""
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
     
-    error_message = "عذراً، حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى لاحقاً."
+    # استخدام المسار المحدد في متغيرات البيئة
+    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+    chrome_driver_path = os.getenv("CHROME_DRIVER_PATH", "/usr/bin/chromedriver")
     
-    try:
-        if update and update.effective_message:
-            await update.effective_message.reply_text(error_message)
-    except Exception as e:
-        logger.error(f"Error sending error message: {e}")
+    options.binary_location = chrome_bin
+    service = Service(executable_path=chrome_driver_path)
+    
+    return webdriver.Chrome(service=service, options=options)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """بداية المحادثة"""
-    try:
-        keyboard = [[InlineKeyboardButton("تسجيل الدخول", callback_data='login')]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        if update.message:
-            await update.message.reply_text(
-                'مرحباً بك في بوت تغيير معرف المتصل\nاضغط على زر تسجيل الدخول للبدء',
-                reply_markup=reply_markup
-            )
-        return ConversationHandler.END
-    except Exception as e:
-        logger.error(f"Error in start handler: {e}")
-        await error_handler(update, context)
-        return ConversationHandler.END
+    keyboard = [[InlineKeyboardButton("تسجيل الدخول", callback_data='login')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        'مرحباً بك في بوت تغيير معرف المتصل\nاضغط على زر تسجيل الدخول للبدء',
+        reply_markup=reply_markup
+    )
+    return CHOOSING_ACTION
 
-async def handle_login_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة زر تسجيل الدخول"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        await query.edit_message_text("الرجاء إدخال اسم المستخدم:")
-        return USERNAME
-    except Exception as e:
-        logger.error(f"Error in login button handler: {e}")
-        await error_handler(update, context)
-        return ConversationHandler.END
+async def login_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة نقر زر تسجيل الدخول"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("الرجاء إدخال اسم المستخدم:")
+    return USERNAME
 
-# دوال ناقصة يجب إضافتها
 async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة اسم المستخدم"""
-    # معالجة اسم المستخدم هنا
+    """معالجة إدخال اسم المستخدم"""
+    context.user_data['username'] = update.message.text
+    await update.message.reply_text("الرجاء إدخال كلمة المرور:")
     return PASSWORD
 
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة كلمة المرور"""
-    # معالجة كلمة المرور هنا
-    return CALLER_ID
+    """معالجة إدخال كلمة المرور"""
+    try:
+        username = context.user_data.get('username')
+        password = update.message.text
+
+        status_message = await update.message.reply_text("جاري تسجيل الدخول...")
+
+        driver = setup_driver()
+        try:
+            driver.get(WEBSITE_URL)
+            wait = WebDriverWait(driver, 20)
+
+            # إدخال اسم المستخدم وكلمة المرور
+            username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
+            username_field.clear()
+            username_field.send_keys(username)
+
+            password_field = driver.find_element(By.ID, "password")
+            password_field.clear()
+            password_field.send_keys(password)
+
+            # الضغط على زر تسجيل الدخول
+            login_button = driver.find_element(By.ID, "login-button")
+            login_button.click()
+
+            # التحقق من نجاح تسجيل الدخول
+            try:
+                wait.until(EC.presence_of_element_located((By.ID, "dashboard")))
+                await status_message.edit_text("✅ تم تسجيل الدخول بنجاح!\nالرجاء إدخال معرف المتصل الجديد:")
+                context.user_data['logged_in'] = True
+                return CALLER_ID
+            except TimeoutException:
+                await status_message.edit_text("❌ فشل تسجيل الدخول\nالرجاء التأكد من صحة اسم المستخدم وكلمة المرور")
+                return ConversationHandler.END
+
+        finally:
+            driver.quit()
+
+    except Exception as e:
+        logger.error(f"خطأ في تسجيل الدخول: {str(e)}")
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ حدث خطأ أثناء محاولة تسجيل الدخول\nالرجاء المحاولة مرة أخرى")
+        return ConversationHandler.END
 
 async def handle_caller_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة معرف المتصل"""
-    # معالجة معرف المتصل هنا
-    return ConversationHandler.END
+    """معالجة تغيير معرف المتصل"""
+    if not context.user_data.get('logged_in'):
+        await update.message.reply_text("الرجاء تسجيل الدخول أولاً")
+        return ConversationHandler.END
+
+    status_message = await update.message.reply_text("جاري تغيير معرف المتصل...")
+    new_caller_id = update.message.text
+    
+    try:
+        driver = setup_driver()
+        wait = WebDriverWait(driver, 20)
+
+        # تنفيذ تغيير معرف المتصل
+        driver.get(WEBSITE_URL)
+        caller_id_field = wait.until(EC.presence_of_element_located((By.ID, "caller-id")))
+        caller_id_field.clear()
+        caller_id_field.send_keys(new_caller_id)
+
+        save_button = wait.until(EC.element_to_be_clickable((By.ID, "save-button")))
+        save_button.click()
+
+        await status_message.edit_text(f"✅ تم تغيير معرف المتصل بنجاح إلى: {new_caller_id}")
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"خطأ في تغيير معرف المتصل: {str(e)}")
+        await status_message.edit_text("❌ حدث خطأ أثناء تغيير معرف المتصل")
+        return ConversationHandler.END
+
+    finally:
+        if driver:
+            driver.quit()
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """إلغاء المحادثة"""
-    await update.message.reply_text("تم إلغاء المحادثة.")
+    """إلغاء العملية"""
+    await update.message.reply_text('تم إلغاء العملية')
     return ConversationHandler.END
 
-def main() -> None:
-    """الدالة الرئيسية المحسنة"""
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """معالجة الأخطاء العامة"""
+    logger.error(f"Error: {context.error}\n{traceback.format_exc()}")
     try:
-        # إنشاء التطبيق مع إعدادات إضافية
-        application = Application.builder().token(TOKEN).connect_timeout(30).read_timeout(30).build()
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "❌ حدث خطأ غير متوقع\nالرجاء المحاولة مرة أخرى لاحقاً"
+            )
+    except Exception as e:
+        logger.error(f"Error in error handler: {str(e)}")
 
-        # إضافة معالج المحادثة
+def main() -> None:
+    """الدالة الرئيسية"""
+    try:
+        # إنشاء التطبيق
+        application = Application.builder().token(TOKEN).build()
+
+        # إنشاء معالج المحادثة
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler('start', start),
-                CallbackQueryHandler(handle_login_button, pattern='^login$')
             ],
             states={
-                USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_username)],
-                PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password)],
-                CALLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_caller_id)],
+                CHOOSING_ACTION: [
+                    CallbackQueryHandler(login_callback, pattern='^login$')
+                ],
+                USERNAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_username)
+                ],
+                PASSWORD: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password)
+                ],
+                CALLER_ID: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_caller_id)
+                ],
             },
             fallbacks=[CommandHandler('cancel', cancel)],
             name="main_conversation",
             persistent=False
         )
 
+        # إضافة المعالجات
         application.add_handler(conv_handler)
         application.add_error_handler(error_handler)
 
         # تشغيل البوت
-        application.run_polling(
-            drop_pending_updates=True,
-            pool_timeout=30
-        )
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
 
     except Exception as e:
-        logger.error(f"Critical error in main: {str(e)}")
+        logger.error(f"Critical error: {str(e)}")
         logger.error(traceback.format_exc())
-        raise
 
 if __name__ == '__main__':
     main()
