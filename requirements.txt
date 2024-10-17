@@ -1,2 +1,5 @@
 pyTelegramBotAPI
 ping3
+selenium
+python-telegram-bot
+webdriver-manager
