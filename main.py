@@ -18,6 +18,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+import logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG
+)
 # التوكن
 TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 
@@ -203,11 +209,16 @@ def main() -> None:
         application.add_error_handler(error_handler)
 
         # تشغيل البوت
+        logger.info("بدء تشغيل البوت...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
 
     except Exception as e:
         logger.error(f"خطأ في تشغيل البوت: {str(e)}")
         logger.error(traceback.format_exc())
+        # إعادة المحاولة بعد فترة
+        import time
+        time.sleep(60)  # انتظر دقيقة واحدة
+        main()  # أعد تشغيل البوت
 
 if __name__ == '__main__':
     main()
