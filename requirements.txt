@@ -1,2 +1,2 @@
-aiogram==2.25.2
-telethon==1.24.0
+pyTelegramBotAPI
+ping3
