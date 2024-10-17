@@ -210,24 +210,23 @@ def main():
     
     # إعداد معالج المحادثة
     conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('start', start),
-            CallbackQueryHandler(login_button, pattern='^login$')
+    entry_points=[
+        CommandHandler('start', start),
+        CallbackQueryHandler(login_button, pattern='^login$')
+    ],
+    states={
+        USERNAME: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_username)
         ],
-        states={
-            USERNAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_username)
-            ],
-            PASSWORD: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)
-            ],
-            CALLER_ID: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, change_caller_id)
-            ],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True
-    )
+        PASSWORD: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)
+        ],
+        CALLER_ID: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, change_caller_id)
+        ],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)]
+)
     
     # إضافة المعالج
     application.add_handler(conv_handler)
