@@ -10,7 +10,7 @@ from selenium.webdriver.chrome.service import Service
 import asyncio
 
 # استبدلها بالرمز الخاص بك
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 
 # حالات المحادثة
 USERNAME, PASSWORD, CALLER_ID = range(3)
