@@ -28,9 +28,8 @@ USERNAME, PASSWORD, CALLER_ID = range(3)
 WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
 
 # تحديد مسارات Chrome
-CHROME_BIN = os.getenv("CHROME_BIN", "/usr/bin/chromium")
-CHROME_DRIVER_PATH = os.getenv("CHROME_DRIVER", "/usr/bin/chromedriver")
-
+chrome_options.binary_location = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+chrome_driver_path = os.getenv("CHROME_DRIVER", "/usr/bin/chromedriver")
 # تخزين جلسة المتصفح
 driver = None
 
