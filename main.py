@@ -24,7 +24,8 @@ chrome_options = Options()
 chrome_options.add_argument("--headless")  # Run in headless mode
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.binary_location = "/usr/bin/chromium-browser"  # Path to chromium
+chrome_options.binary_location = "/usr/bin/chromium"  # أو "/usr/bin/chromium-browser" حسب توفره
+
 
 # Initialize the WebDriver using Service and ChromeDriverManager
 service = Service(ChromeDriverManager().install())
