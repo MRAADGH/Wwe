@@ -1,166 +1,120 @@
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import asyncio
 
-import telebot
-import socket
-import concurrent.futures
-from ping3 import ping
-import time
-import io
+# Replace with your actual bot token
+TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 
-# تعريف التوكن الخاص ببوت التليجرام
-TOKEN = '7301883949:AAGI-cJKosJ1vavbPlYLEW137j5qT7tjry0'
-bot = telebot.TeleBot(TOKEN)
+# States
+USERNAME, PASSWORD, CALLER_ID = range(3)
 
-class IPScanner:
-    def __init__(self, ip_list, threads=50):
-        self.ip_list = ip_list
-        self.threads = threads
-        self.working_hosts = []
+# Replace with your actual website URL
+WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
 
-    def check_host(self, ip):
-        try:
-            response_time = ping(ip, timeout=2)
-            if response_time is not None:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(2)
-                result = sock.connect_ex((ip, 80))
-                sock.close()
-                
-                if result == 0:
-                    self.working_hosts.append(ip)
-                    return True, ip, response_time
-            return False, ip, None
-        except Exception:
-            return False, ip, None
+# Initialize the WebDriver (you might need to adjust this based on your environment)
+driver = webdriver.Chrome()  # or webdriver.Firefox() if you're using Firefox
 
-    def scan(self):
-        results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
-            future_to_ip = {executor.submit(self.check_host, ip): ip for ip in self.ip_list}
-            for future in concurrent.futures.as_completed(future_to_ip):
-                try:
-                    success, ip, response_time = future.result()
-                    if success:
-                        results.append(f"✅ {ip} - شغال - {response_time:.2f}ms")
-                except Exception:
-                    continue
-        return results
+async def start(update: Update, context):
+    keyboard = [
+        [InlineKeyboardButton("تسجيل الدخول", callback_data='login')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('مرحبًا بك في بوت خدمة تغيير معرف المتصل. الرجاء تسجيل الدخول.', reply_markup=reply_markup)
 
-def send_long_message(chat_id, text, reply_to_message_id=None):
-    """تقسيم الرسائل الطويلة إلى أجزاء"""
-    max_length = 4000  # أقل من الحد الأقصى للتليجرام للأمان
-    parts = []
+async def login(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(text="📳 خدمة تغيير معرف المتصل | قائمة تسجيل الدخول\n\nℹ️ أدخل اسم المستخدم الخاص بك:")
+    return USERNAME
+
+async def get_username(update: Update, context):
+    context.user_data['username'] = update.message.text
+    await update.message.reply_text("📳 خدمة تغيير معرف المتصل | قائمة تسجيل الدخول\n\nℹ️ أدخل كلمة المرور الخاصة بك:")
+    return PASSWORD
+
+async def get_password(update: Update, context):
+    username = context.user_data['username']
+    password = update.message.text
     
-    while text:
-        if len(text) <= max_length:
-            parts.append(text)
-            break
-        part = text[:max_length]
-        last_newline = part.rfind('\n')
-        if last_newline != -1:
-            parts.append(text[:last_newline])
-            text = text[last_newline + 1:]
-        else:
-            parts.append(text[:max_length])
-            text = text[max_length:]
-
-    # إرسال كل جزء
-    first_message_id = None
-    for i, part in enumerate(parts):
-        if i == 0 and reply_to_message_id:
-            message = bot.reply_to(reply_to_message_id, part)
-            first_message_id = message.message_id
-        else:
-            message = bot.send_message(chat_id, part)
+    # Use Selenium to log in to the website
+    driver.get(WEBSITE_URL)
     
-    return first_message_id
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    welcome_text = """
-مرحباً بك في بوت فحص الهوستات! 🌐
-
-الأوامر المتاحة:
-- أرسل قائمة من عناوين IP للفحص
-- /help للمساعدة
-
-المطور: @SAGD112
-    """
-    bot.reply_to(message, welcome_text)
-
-@bot.message_handler(commands=['help'])
-def help_command(message):
-    help_text = """
-كيفية استخدام البوت:
-1. قم بنسخ قائمة الهوستات (IP)
-2. أرسلها مباشرة إلى البوت
-3. انتظر النتائج - سيظهر لك الهوستات الشغالة فقط
-
-مثال:
-185.60.219.14
-185.60.219.15
-185.60.219.16
-    """
-    bot.reply_to(message, help_text)
-
-@bot.message_handler(func=lambda message: True)
-def scan_ips(message):
-    ip_list = [ip.strip() for ip in message.text.split('\n') if ip.strip()]
+    # Wait for the username field to be visible and enter the username
+    username_field = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, "username"))
+    )
+    username_field.send_keys(username)
     
-    if not ip_list:
-        bot.reply_to(message, "❌ الرجاء إرسال قائمة صحيحة من عناوين IP!")
-        return
-
-    valid_ips = []
-    for ip in ip_list:
-        try:
-            socket.inet_aton(ip)
-            valid_ips.append(ip)
-        except socket.error:
-            continue
-
-    if not valid_ips:
-        bot.reply_to(message, "❌ لم يتم العثور على عناوين IP صحيحة!")
-        return
-
-    status_message = bot.reply_to(message, f"⏳ جاري فحص {len(valid_ips)} هوست...")
-
-    scanner = IPScanner(valid_ips)
-    start_time = time.time()
-    working_hosts = scanner.scan()
-    scan_time = time.time() - start_time
-
-    if working_hosts:
-        results_text = "🟢 الهوستات الشغالة:\n\n"
-        results_text += "\n".join(working_hosts)
-        results_text += f"\n\n⏱ زمن الفحص: {scan_time:.2f} ثانية"
-        results_text += "\n\nBY: @SAGD112"
-
-        # حذف رسالة "جاري الفحص"
-        bot.delete_message(message.chat.id, status_message.message_id)
-        
-        # إرسال النتائج كرسائل منفصلة
-        send_long_message(message.chat.id, results_text, message)
-
-        # إنشاء وإرسال ملف النتائج
-        results_file = io.StringIO()
-        results_file.write("\n".join([host.split(" ")[1] for host in working_hosts]))
-        results_file.seek(0)
-        
-        bot.send_document(
-            message.chat.id,
-            ('working_hosts.txt', results_file.getvalue().encode()),
-            caption=f"📄 تم العثور على {len(working_hosts)} هوست شغال"
-        )
-    else:
-        bot.edit_message_text(
-            f"❌ لم يتم العثور على هوستات شغالة\n⏱ زمن الفحص: {scan_time:.2f} ثانية",
-            message.chat.id,
-            status_message.message_id
-        )
-
-if __name__ == "__main__":
-    print("Bot started...")
+    # Enter the password
+    password_field = driver.find_element(By.ID, "password")
+    password_field.send_keys(password)
+    
+    # Click the login button
+    login_button = driver.find_element(By.ID, "login-button")
+    login_button.click()
+    
+    # Check if login was successful (you might need to adjust this based on your website)
     try:
-        bot.infinity_polling()
-    except Exception as e:
-        print(f"Error: {e}")
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "dashboard"))
+        )
+        await update.message.reply_text("🔔 تم تسجيل الدخول بنجاح ✅\n\nℹ️ أدخل معرف المتصل الذي تريد إظهاره:")
+        return CALLER_ID
+    except:
+        await update.message.reply_text("❌ فشل تسجيل الدخول. الرجاء المحاولة مرة أخرى.")
+        return ConversationHandler.END
+
+async def change_caller_id(update: Update, context):
+    new_caller_id = update.message.text
+    
+    # Use Selenium to change the caller ID on the website
+    try:
+        caller_id_field = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "caller-id"))
+        )
+        caller_id_field.clear()
+        caller_id_field.send_keys(new_caller_id)
+        
+        save_button = driver.find_element(By.ID, "save-caller-id")
+        save_button.click()
+        
+        # Wait for confirmation message
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "success-message"))
+        )
+        
+        await update.message.reply_text(f"✅ تم تحديث معرف المتصل بنجاح: {new_caller_id}")
+    except:
+        await update.message.reply_text("❌ حدث خطأ أثناء تحديث معرف المتصل. الرجاء المحاولة مرة أخرى.")
+    
+    return ConversationHandler.END
+
+async def cancel(update: Update, context):
+    await update.message.reply_text('تم إلغاء العملية.')
+    return ConversationHandler.END
+
+def main():
+    application = Application.builder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(login, pattern='^login$')],
+        states={
+            USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_username)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)],
+            CALLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, change_caller_id)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(conv_handler)
+
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
