@@ -1,13 +1,10 @@
 import os
+import undetected_chromedriver as uc
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
 import asyncio
 
 # Replace with your actual bot token
@@ -20,19 +17,13 @@ USERNAME, PASSWORD, CALLER_ID = range(3)
 WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
 
 # Configure Chrome options for headless mode
-chrome_options = Options()
+chrome_options = uc.ChromeOptions()
 chrome_options.add_argument("--headless")  # Run in headless mode
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.binary_location = "/usr/bin/chromium"  # أو "/usr/bin/chromium-browser" حسب توفره
 
-
-# Initialize the WebDriver using Service and ChromeDriverManager
-service = Service(ChromeDriverManager().install())
-driver = webdriver.Chrome(service=service, options=chrome_options)
-
-# باقي الكود كما هو، ابتداءً من async def start...
-
+# Initialize the WebDriver
+driver = uc.Chrome(options=chrome_options)
 
 async def start(update: Update, context):
     keyboard = [
