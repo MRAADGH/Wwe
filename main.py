@@ -30,7 +30,7 @@ TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 CHOOSING_ACTION, USERNAME, PASSWORD, CALLER_ID = range(4)
 
 # رابط الموقع
-WEBSITE_URL = "https://vipcaller.net/mbilling/"
+WEBSITE_URL = "http://sip.vipcaller.net"
 
 def setup_driver():
     """إعداد متصفح Chrome مع إعدادات محسنة"""
