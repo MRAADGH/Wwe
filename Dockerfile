@@ -1,4 +1,3 @@
-
 FROM python:3.11-slim
 
 # تثبيت المتطلبات الأساسية
@@ -14,15 +13,18 @@ ENV PYTHONUNBUFFERED=1
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_DRIVER_PATH=/usr/bin/chromedriver
 
-# إنشاء مجلد العمل
+# إنشاء وتعيين مجلد العمل
 WORKDIR /app
 
-# نسخ ملفات المشروع
+# نسخ وتثبيت المتطلبات
 COPY requirements.txt .
-COPY main.py .
-
-# تثبيت المتطلبات
 RUN pip install --no-cache-dir -r requirements.txt
+
+# نسخ ملفات المشروع
+COPY . .
+
+# إنشاء مجلد للسجلات
+RUN mkdir -p logs && chmod 777 logs
 
 # تشغيل البوت
 CMD ["python", "main.py"]
