@@ -18,14 +18,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# توكن البوت - قم بتغييره إلى التوكن الخاص بك
+# توكن البوت
 TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 
 # حالات المحادثة
 USERNAME, PASSWORD, CALLER_ID = range(3)
 
-# رابط الموقع - قم بتغييره إلى الرابط الخاص بك
+# رابط الموقع
 WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
+
+# تحديد مسارات Chrome
+CHROME_BIN = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+CHROME_DRIVER_PATH = os.getenv("CHROME_DRIVER", "/usr/bin/chromedriver")
 
 # تخزين جلسة المتصفح
 driver = None
@@ -33,7 +37,8 @@ driver = None
 def setup_chrome_options():
     """إعداد خيارات متصفح كروم"""
     options = Options()
-    options.add_argument("--headless")  # تشغيل المتصفح بدون واجهة رسومية
+    options.binary_location = CHROME_BIN
+    options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -42,11 +47,17 @@ def setup_chrome_options():
 
 def create_driver():
     """إنشاء متصفح جديد"""
+    global driver
+    if driver:
+        try:
+            driver.quit()
+        except:
+            pass
     options = setup_chrome_options()
-    service = Service()  # قم بتحديد مسار ChromeDriver إذا كان ضرورياً
-    new_driver = webdriver.Chrome(service=service, options=options)
-    new_driver.implicitly_wait(10)
-    return new_driver
+    service = Service(executable_path=CHROME_DRIVER_PATH)
+    driver = webdriver.Chrome(service=service, options=options)
+    driver.implicitly_wait(10)
+    return driver
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج أمر البداية"""
@@ -70,54 +81,62 @@ async def get_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج استلام اسم المستخدم"""
     context.user_data['username'] = update.message.text
     await update.message.reply_text("🔑 الرجاء إدخال كلمة المرور:")
-    # حذف رسالة المستخدم التي تحتوي على اسم المستخدم لأسباب أمنية
-    await update.message.delete()
     return PASSWORD
 
 async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج استلام كلمة المرور ومحاولة تسجيل الدخول"""
-    # حذف رسالة المستخدم التي تحتوي على كلمة المرور لأسباب أمنية
-    await update.message.delete()
-    
     try:
-        username = context.user_data['username']
+        username = context.user_data.get('username')
         password = update.message.text
         
-        driver = create_driver()
-        driver.get(WEBSITE_URL)
+        if not username:
+            await update.message.reply_text("❌ حدث خطأ: لم يتم العثور على اسم المستخدم. الرجاء البدء من جديد باستخدام /start")
+            return ConversationHandler.END
         
+        # إنشاء جلسة جديدة للمتصفح
+        driver = create_driver()
+        logger.info("تم إنشاء المتصفح بنجاح")
+        
+        # فتح صفحة تسجيل الدخول
+        driver.get(WEBSITE_URL)
+        logger.info("تم فتح صفحة تسجيل الدخول")
+        
+        # إنشاء كائن WebDriverWait
         wait = WebDriverWait(driver, 30)
         
-        # إدخال اسم المستخدم
+        # انتظار وإدخال اسم المستخدم
         username_field = wait.until(
-            EC.element_to_be_clickable((By.ID, "username"))
+            EC.presence_of_element_located((By.ID, "username"))
         )
+        logger.info("تم العثور على حقل اسم المستخدم")
         username_field.clear()
         username_field.send_keys(username)
         
         # إدخال كلمة المرور
-        password_field = wait.until(
-            EC.element_to_be_clickable((By.ID, "password"))
-        )
+        password_field = driver.find_element(By.ID, "password")
         password_field.clear()
         password_field.send_keys(password)
+        logger.info("تم إدخال بيانات تسجيل الدخول")
         
         # الضغط على زر تسجيل الدخول
-        login_button = wait.until(
-            EC.element_to_be_clickable((By.ID, "login-button"))
-        )
+        login_button = driver.find_element(By.ID, "login-button")
         login_button.click()
+        logger.info("تم الضغط على زر تسجيل الدخول")
         
         # التحقق من نجاح تسجيل الدخول
         try:
             # انتظار ظهور لوحة التحكم
-            wait.until(EC.presence_of_element_located((By.ID, "dashboard")))
+            dashboard = wait.until(
+                EC.presence_of_element_located((By.ID, "dashboard"))
+            )
+            logger.info("تم تسجيل الدخول بنجاح")
             await update.message.reply_text(
                 "✅ تم تسجيل الدخول بنجاح!\n\n"
                 "الرجاء إدخال معرف المتصل الجديد:"
             )
             return CALLER_ID
         except TimeoutException:
+            logger.error("فشل تسجيل الدخول - لم يتم العثور على لوحة التحكم")
             await update.message.reply_text(
                 "❌ فشل تسجيل الدخول\n"
                 "تأكد من صحة اسم المستخدم وكلمة المرور"
@@ -125,22 +144,22 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
             
     except Exception as e:
-        logger.error(f"خطأ: {str(e)}")
+        logger.error(f"خطأ غير متوقع: {str(e)}")
         await update.message.reply_text(
             "❌ حدث خطأ غير متوقع\n"
             "الرجاء المحاولة مرة أخرى لاحقاً"
         )
         return ConversationHandler.END
-        
+    
     finally:
         if driver:
             driver.quit()
+            logger.info("تم إغلاق المتصفح")
 
 async def change_caller_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج تغيير معرف المتصل"""
-    new_caller_id = update.message.text
-    
     try:
+        new_caller_id = update.message.text
         driver = create_driver()
         wait = WebDriverWait(driver, 30)
         
@@ -192,6 +211,7 @@ def main():
     # إعداد معالج المحادثة
     conv_handler = ConversationHandler(
         entry_points=[
+            CommandHandler('start', start),
             CallbackQueryHandler(login_button, pattern='^login$')
         ],
         states={
@@ -206,11 +226,10 @@ def main():
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True  # تمكين تتبع الحالة لكل رسالة
+        per_message=True
     )
     
-    # إضافة المعالجات
-    application.add_handler(CommandHandler("start", start))
+    # إضافة المعالج
     application.add_handler(conv_handler)
     
     # تشغيل البوت
