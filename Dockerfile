@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 
 # تعيين متغير البيئة ليعمل Chromium كسيناريو دون واجهة
 ENV CHROME_BIN=/usr/bin/chromium
-ENV CHROME_DRIVER=/usr/bin/chromedriver
+ENV CHROME_DRIVER_PATH=/usr/bin/chromedriver
 
 # نسخ المتطلبات وتثبيتها
 COPY requirements.txt .
