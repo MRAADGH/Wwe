@@ -1,3 +1,4 @@
+
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
@@ -23,10 +24,13 @@ chrome_options = Options()
 chrome_options.add_argument("--headless")  # للتشغيل بدون واجهة
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.binary_location = "/usr/bin/google-chrome"  # مسار Chrome داخل الحاوية
+
+# تحديد مسارات المتصفح Chromium و ChromeDriver من البيئة
+chrome_options.binary_location = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+chrome_driver_path = os.getenv("CHROME_DRIVER", "/usr/bin/chromedriver")
 
 # تهيئة WebDriver
-driver = webdriver.Chrome(service=Service("/usr/local/bin/chromedriver"), options=chrome_options)
+driver = webdriver.Chrome(service=Service(chrome_driver_path), options=chrome_options)
 
 # تعريف الوظائف الخاصة بالبوت
 
