@@ -95,21 +95,21 @@ async def login_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text("⚠️ عذراً، الموقع غير متاح حالياً. الرجاء المحاولة لاحقاً.")
         return ConversationHandler.END
         
-    await query.edit_message_text("الرجاء إدخال اسم المستخدم:")
-    return Email
+    await query.edit_message_text("الرجاء إدخال البريد الإلكتروني:")
+    return EMAIL
 
-async def handle_Email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة إدخال اسم المستخدم"""
-    Email = update.message.text
-    logger.info(f"تم استلام اسم المستخدم: {Email}")
-    context.user_data['Email'] = Email
+async def handle_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة إدخال البريد الإلكتروني"""
+    email = update.message.text
+    logger.info(f"تم استلام البريد الإلكتروني: {email}")
+    context.user_data['email'] = email
     await update.message.reply_text("الرجاء إدخال كلمة المرور:")
     return PASSWORD
 
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """معالجة إدخال كلمة المرور"""
     try:
-        Email = context.user_data.get('Email')
+        email = context.user_data.get('email')
         password = update.message.text
         
         logger.info("بدء محاولة تسجيل الدخول...")
@@ -128,21 +128,21 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             # طباعة مصدر الصفحة للتشخيص
             logger.debug(f"مصدر الصفحة: {driver.page_source[:500]}...")  # نطبع أول 500 حرف فقط
             
-            # محاولة العثور على حقل اسم المستخدم باستخدام طرق مختلفة
-            Email_field = None
-            for selector in ["#Email", "input[name='Email']", "//input[@id='Email']"]:
+            # محاولة العثور على حقل البريد الإلكتروني باستخدام طرق مختلفة
+            email_field = None
+            for selector in ["#email", "input[name='email']", "//input[@id='email']"]:
                 try:
-                    Email_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR if selector.startswith(("#", ".")) else By.XPATH, selector)))
+                    email_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR if selector.startswith(("#", ".")) else By.XPATH, selector)))
                     break
                 except:
                     continue
             
-            if not Email_field:
-                raise NoSuchElementException("لم يتم العثور على حقل اسم المستخدم")
+            if not email_field:
+                raise NoSuchElementException("لم يتم العثور على حقل البريد الإلكتروني")
             
-            Email_field.clear()
-            Email_field.send_keys(Email)
-            logger.debug("تم إدخال اسم المستخدم")
+            email_field.clear()
+            email_field.send_keys(email)
+            logger.debug("تم إدخال البريد الإلكتروني")
             
             # إدخال كلمة المرور
             password_field = wait.until(EC.presence_of_element_located((By.ID, "password")))
@@ -265,7 +265,7 @@ def main() -> None:
             entry_points=[CommandHandler('start', start)],
             states={
                 CHOOSING_ACTION: [CallbackQueryHandler(login_callback, pattern='^login$')],
-                EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_Email)],
+                EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email)],
                 PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password)],
                 CALLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_caller_id)],
             },
