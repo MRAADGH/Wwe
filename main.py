@@ -2,9 +2,11 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 import asyncio
 
 # Replace with your actual bot token
@@ -16,8 +18,14 @@ USERNAME, PASSWORD, CALLER_ID = range(3)
 # Replace with your actual website URL
 WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
 
-# Initialize the WebDriver (you might need to adjust this based on your environment)
-driver = webdriver.Chrome()  # or webdriver.Firefox() if you're using Firefox
+# Configure Chrome options for headless mode
+chrome_options = Options()
+chrome_options.add_argument("--headless")  # Run in headless mode
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
+
+# Initialize the WebDriver using webdriver-manager
+driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
 
 async def start(update: Update, context):
     keyboard = [
@@ -40,25 +48,25 @@ async def get_username(update: Update, context):
 async def get_password(update: Update, context):
     username = context.user_data['username']
     password = update.message.text
-    
+
     # Use Selenium to log in to the website
     driver.get(WEBSITE_URL)
-    
+
     # Wait for the username field to be visible and enter the username
     username_field = WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.ID, "username"))
     )
     username_field.send_keys(username)
-    
+
     # Enter the password
     password_field = driver.find_element(By.ID, "password")
     password_field.send_keys(password)
-    
+
     # Click the login button
     login_button = driver.find_element(By.ID, "login-button")
     login_button.click()
-    
-    # Check if login was successful (you might need to adjust this based on your website)
+
+    # Check if login was successful
     try:
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "dashboard"))
@@ -71,7 +79,7 @@ async def get_password(update: Update, context):
 
 async def change_caller_id(update: Update, context):
     new_caller_id = update.message.text
-    
+
     # Use Selenium to change the caller ID on the website
     try:
         caller_id_field = WebDriverWait(driver, 10).until(
@@ -79,19 +87,19 @@ async def change_caller_id(update: Update, context):
         )
         caller_id_field.clear()
         caller_id_field.send_keys(new_caller_id)
-        
+
         save_button = driver.find_element(By.ID, "save-caller-id")
         save_button.click()
-        
+
         # Wait for confirmation message
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "success-message"))
         )
-        
+
         await update.message.reply_text(f"✅ تم تحديث معرف المتصل بنجاح: {new_caller_id}")
     except:
         await update.message.reply_text("❌ حدث خطأ أثناء تحديث معرف المتصل. الرجاء المحاولة مرة أخرى.")
-    
+
     return ConversationHandler.END
 
 async def cancel(update: Update, context):
