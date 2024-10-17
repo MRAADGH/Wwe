@@ -1,18 +1,31 @@
-# Use the official Python image
+# استخدام صورة مناسبة
 FROM python:3.11-slim
 
-# Install required packages
+# تثبيت المتطلبات الأساسية
 RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-driver \
+    wget \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# تثبيت إصدار محدد من Chromium وChromeDriver
+RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt install -y ./google-chrome-stable_current_amd64.deb \
+    && rm google-chrome-stable_current_amd64.deb
 
-# Copy the rest of the code
+RUN CHROME_DRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
+    wget -q https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip && \
+    unzip chromedriver_linux64.zip -d /usr/local/bin/ && \
+    rm chromedriver_linux64.zip
+
+# ضبط chromedriver ليعمل كخدمة في الحاوية
+ENV PATH="/usr/local/bin/chromedriver:${PATH}"
+
+# تثبيت المتطلبات في Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# نسخ الكود
 COPY . .
 
-# Run the application
+# تعيين نقطة البداية
 CMD ["python", "main.py"]
