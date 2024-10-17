@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # توكن البوت
-TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
+TOKEN = "7492900908:AAGiiLlsafD-O4Fam6r5vP07vo2I8IeXVCc"
 
 # حالات المحادثة
 USERNAME, PASSWORD, CALLER_ID = range(3)
