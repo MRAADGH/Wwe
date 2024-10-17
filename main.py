@@ -31,10 +31,10 @@ logger = logging.getLogger(__name__)
 TOKEN = "7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM"
 
 # حالات المحادثة
-CHOOSING_ACTION, USERNAME, PASSWORD, CALLER_ID = range(4)
+CHOOSING_ACTION, EMAIL, PASSWORD, CALLER_ID = range(4)
 
 # رابط الموقع
-WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
+WEBSITE_URL = "https://illyvoip.com/my/index.php?redirect=/my/dashboard.php"
 
 def setup_driver():
     """إعداد متصفح Chrome مع إعدادات محسنة"""
@@ -96,20 +96,20 @@ async def login_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ConversationHandler.END
         
     await query.edit_message_text("الرجاء إدخال اسم المستخدم:")
-    return USERNAME
+    return Email
 
-async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def handle_Email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """معالجة إدخال اسم المستخدم"""
-    username = update.message.text
-    logger.info(f"تم استلام اسم المستخدم: {username}")
-    context.user_data['username'] = username
+    Email = update.message.text
+    logger.info(f"تم استلام اسم المستخدم: {Email}")
+    context.user_data['Email'] = Email
     await update.message.reply_text("الرجاء إدخال كلمة المرور:")
     return PASSWORD
 
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """معالجة إدخال كلمة المرور"""
     try:
-        username = context.user_data.get('username')
+        Email = context.user_data.get('Email')
         password = update.message.text
         
         logger.info("بدء محاولة تسجيل الدخول...")
@@ -129,19 +129,19 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.debug(f"مصدر الصفحة: {driver.page_source[:500]}...")  # نطبع أول 500 حرف فقط
             
             # محاولة العثور على حقل اسم المستخدم باستخدام طرق مختلفة
-            username_field = None
-            for selector in ["#username", "input[name='username']", "//input[@id='username']"]:
+            Email_field = None
+            for selector in ["#Email", "input[name='Email']", "//input[@id='Email']"]:
                 try:
-                    username_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR if selector.startswith(("#", ".")) else By.XPATH, selector)))
+                    Email_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR if selector.startswith(("#", ".")) else By.XPATH, selector)))
                     break
                 except:
                     continue
             
-            if not username_field:
+            if not Email_field:
                 raise NoSuchElementException("لم يتم العثور على حقل اسم المستخدم")
             
-            username_field.clear()
-            username_field.send_keys(username)
+            Email_field.clear()
+            Email_field.send_keys(Email)
             logger.debug("تم إدخال اسم المستخدم")
             
             # إدخال كلمة المرور
@@ -265,7 +265,7 @@ def main() -> None:
             entry_points=[CommandHandler('start', start)],
             states={
                 CHOOSING_ACTION: [CallbackQueryHandler(login_callback, pattern='^login$')],
-                USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_username)],
+                EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_Email)],
                 PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password)],
                 CALLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_caller_id)],
             },
