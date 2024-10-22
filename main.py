@@ -1,151 +1,159 @@
-import os
-import logging
-import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler, ContextTypes
-import traceback
+import telebot
+import socket
+import concurrent.futures
+from ping3 import ping
+import time
+import io
 
-# إعداد التسجيل
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG
-)
-logger = logging.getLogger(__name__)
+TOKEN = '7852676274:AAHIx3Q9qFbylmvHKDhbhT5nEpFOFA5i2CM'
+bot = telebot.TeleBot(TOKEN)
 
-# التوكن
-TOKEN = "6845291404:AAHn2aPymNMuMeHZtQ470jKJJJ08YRjpaOI"
+class IPScanner:
+    def __init__(self, ip_list, threads=50):
+        self.ip_list = ip_list
+        self.threads = threads
+        self.working_hosts = []
 
-# حالات المحادثة
-CHOOSING_ACTION, USERNAME, PASSWORD, CALLER_ID = range(4)
+    def check_host(self, ip):
+        try:
+            response_time = ping(ip, timeout=2)
+            if response_time is not None:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                result = sock.connect_ex((ip, 80))
+                sock.close()
+                
+                if result == 0:
+                    self.working_hosts.append(ip)
+                    return True, ip, response_time
+            return False, ip, None
+        except Exception:
+            return False, ip, None
 
-# رابط الموقع
-WEBSITE_URL = "http://sip.vipcaller.net/mbilling/"
+    def scan(self):
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+            future_to_ip = {executor.submit(self.check_host, ip): ip for ip in self.ip_list}
+            for future in concurrent.futures.as_completed(future_to_ip):
+                try:
+                    success, ip, response_time = future.result()
+                    if success:
+                        results.append(f"✅ {ip} - شغال - {response_time:.2f}ms")
+                except Exception:
+                    continue
+        return results
 
-# التحقق من توفر الموقع
-def check_website_availability():
-    """التحقق من توفر الموقع باستخدام requests"""
-    try:
-        response = requests.get(WEBSITE_URL, timeout=10)
-        if response.status_code == 200:
-            logger.info("الموقع متاح")
-            return True
+def send_long_message(chat_id, text, reply_to_message_id=None):
+    max_length = 4000
+    parts = []
+    
+    while text:
+        if len(text) <= max_length:
+            parts.append(text)
+            break
+        part = text[:max_length]
+        last_newline = part.rfind('\n')
+        if last_newline != -1:
+            parts.append(text[:last_newline])
+            text = text[last_newline + 1:]
         else:
-            logger.warning(f"الموقع غير متاح، رمز الاستجابة: {response.status_code}")
-            return False
-    except Exception as e:
-        logger.error(f"خطأ في التحقق من الموقع: {str(e)}")
-        return False
+            parts.append(text[:max_length])
+            text = text[max_length:]
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """بداية المحادثة"""
-    keyboard = [[InlineKeyboardButton("تسجيل الدخول", callback_data='login')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        'مرحباً بك في بوت تغيير معرف المتصل\nاضغط على زر تسجيل الدخول للبدء',
-        reply_markup=reply_markup
-    )
-    return CHOOSING_ACTION
-
-async def login_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة نقر زر تسجيل الدخول"""
-    query = update.callback_query
-    await query.answer()
-    
-    site_available = check_website_availability()
-    if not site_available:
-        await query.edit_message_text("⚠️ عذراً، الموقع غير متاح حالياً. الرجاء المحاولة لاحقاً.")
-        return ConversationHandler.END
-        
-    await query.edit_message_text("الرجاء إدخال اسم المستخدم:")
-    return USERNAME
-
-async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة إدخال اسم المستخدم"""
-    username = update.message.text
-    context.user_data['username'] = username
-    await update.message.reply_text("الرجاء إدخال كلمة المرور:")
-    return PASSWORD
-
-async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة إدخال كلمة المرور"""
-    username = context.user_data.get('username')
-    password = update.message.text
-    
-    logger.info("بدء محاولة تسجيل الدخول...")
-    status_message = await update.message.reply_text("جاري تسجيل الدخول... ⏳")
-    
-    try:
-        # هنا يمكنك تعديل الكود ليستخدم requests لتسجيل الدخول إذا كان الموقع يدعم ذلك
-        login_data = {'username': username, 'password': password}
-        response = requests.post(WEBSITE_URL, data=login_data)
-        
-        if response.status_code == 200:
-            await status_message.edit_text("✅ تم تسجيل الدخول بنجاح!\nالرجاء إدخال معرف المتصل الجديد:")
-            context.user_data['logged_in'] = True
-            return CALLER_ID
+    first_message_id = None
+    for i, part in enumerate(parts):
+        if i == 0 and reply_to_message_id:
+            message = bot.reply_to(reply_to_message_id, part)
+            first_message_id = message.message_id
         else:
-            await status_message.edit_text("❌ فشل تسجيل الدخول\nتأكد من صحة بيانات الدخول")
-            return ConversationHandler.END
-
-    except Exception as e:
-        logger.error(f"خطأ أثناء تسجيل الدخول: {str(e)}")
-        await status_message.edit_text("❌ حدث خطأ أثناء محاولة تسجيل الدخول")
-        return ConversationHandler.END
-
-async def handle_caller_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة تغيير معرف المتصل"""
-    if not context.user_data.get('logged_in'):
-        await update.message.reply_text("الرجاء تسجيل الدخول أولاً")
-        return ConversationHandler.END
-
-    status_message = await update.message.reply_text("جاري تغيير معرف المتصل...")
-    new_caller_id = update.message.text
+            message = bot.send_message(chat_id, part)
     
-    try:
-        # قم بإرسال معرف المتصل الجديد باستخدام requests أو أي طريقة متاحة
-        response = requests.post(WEBSITE_URL, data={'caller_id': new_caller_id})
+    return first_message_id
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    welcome_text = """
+مرحباً بك في بوت فحص الهوستات! 🌐
+
+الأوامر المتاحة:
+- أرسل قائمة من عناوين IP للفحص
+- /help للمساعدة
+
+المطور: @aIhabeb
+    """
+    bot.reply_to(message, welcome_text)
+
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    help_text = """
+كيفية استخدام البوت:
+1. قم بنسخ قائمة الهوستات (IP)
+2. أرسلها مباشرة إلى البوت
+3. انتظر النتائج - سيظهر لك الهوستات الشغالة فقط
+
+مثال:
+185.60.219.14
+185.60.219.15
+185.60.219.16
+    """
+    bot.reply_to(message, help_text)
+
+@bot.message_handler(func=lambda message: True)
+def scan_ips(message):
+    ip_list = [ip.strip() for ip in message.text.split('\n') if ip.strip()]
+    
+    if not ip_list:
+        bot.reply_to(message, "❌ الرجاء إرسال قائمة صحيحة من عناوين IP!")
+        return
+
+    valid_ips = []
+    for ip in ip_list:
+        try:
+            socket.inet_aton(ip)
+            valid_ips.append(ip)
+        except socket.error:
+            continue
+
+    if not valid_ips:
+        bot.reply_to(message, "❌ لم يتم العثور على عناوين IP صحيحة!")
+        return
+
+    status_message = bot.reply_to(message, f"⏳ جاري فحص {len(valid_ips)} هوست...")
+
+    scanner = IPScanner(valid_ips)
+    start_time = time.time()
+    working_hosts = scanner.scan()
+    scan_time = time.time() - start_time
+
+    if working_hosts:
+        results_text = "🟢 الهوستات الشغالة:\n\n"
+        results_text += "\n".join(working_hosts)
+        results_text += f"\n\n⏱ زمن الفحص: {scan_time:.2f} ثانية"
+        results_text += "\n\nBY: @aIhabeb"
+
+        bot.delete_message(message.chat.id, status_message.message_id)
         
-        if response.status_code == 200:
-            await status_message.edit_text(f"✅ تم تغيير معرف المتصل بنجاح إلى: {new_caller_id}")
-        else:
-            await status_message.edit_text("❌ حدث خطأ أثناء تغيير معرف المتصل")
-        return ConversationHandler.END
+        send_long_message(message.chat.id, results_text, message)
 
-    except Exception as e:
-        logger.error(f"خطأ في تغيير معرف المتصل: {str(e)}")
-        await status_message.edit_text("❌ حدث خطأ أثناء تغيير معرف المتصل")
-        return ConversationHandler.END
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """إلغاء العملية"""
-    await update.message.reply_text('تم إلغاء العملية')
-    return ConversationHandler.END
-
-def main() -> None:
-    """الدالة الرئيسية"""
-    try:
-        application = Application.builder().token(TOKEN).connect_timeout(60).read_timeout(60).write_timeout(60).build()
-
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', start)],
-            states={
-                CHOOSING_ACTION: [CallbackQueryHandler(login_callback, pattern='^login$')],
-                USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_username)],
-                PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password)],
-                CALLER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_caller_id)],
-            },
-            fallbacks=[CommandHandler('cancel', cancel)],
-            name="main_conversation",
-            persistent=False
+        results_file = io.StringIO()
+        results_file.write("\n".join([host.split(" ")[1] for host in working_hosts]))
+        results_file.seek(0)
+        
+        bot.send_document(
+            message.chat.id,
+            ('working_hosts.txt', results_file.getvalue().encode()),
+            caption=f"📄 تم العثور على {len(working_hosts)} هوست شغال"
+        )
+    else:
+        bot.edit_message_text(
+            f"❌ لم يتم العثور على هوستات شغالة\n⏱ زمن الفحص: {scan_time:.2f} ثانية",
+            message.chat.id,
+            status_message.message_id
         )
 
-        application.add_handler(conv_handler)
-
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-
+if __name__ == "__main__":
+    print("Bot started...")
+    try:
+        bot.infinity_polling()
     except Exception as e:
-        logger.error(f"خطأ حرج في تشغيل البوت: {str(e)}")
-        logger.error(traceback.format_exc())
-
-if __name__ == '__main__':
-    main()
+        print(f"Error: {e}")
